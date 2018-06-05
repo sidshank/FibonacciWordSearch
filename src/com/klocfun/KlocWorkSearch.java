@@ -3,68 +3,188 @@ package com.klocfun;
 import java.util.ArrayDeque;
 import java.util.Map;
 import java.util.HashMap;
+import java.util.function.Supplier;
 
 public class KlocWorkSearch {
 
     private Integer N;
     private String subString;
     private StringBuilder buffer;
-    
+    private Integer numWordsInBuffer;
+
     private static String[] ATOMS = {"kloc", "work"};
     private static Integer ATOM_SIZE = 4;
+
+    private WordSupplier supplier;
 
     public KlocWorkSearch(Integer n, String subStr) {
         N = n;
         subString = subStr;
-        int bufferLen = (int)java.lang.Math.ceil(subStr.length() / ATOM_SIZE)*ATOM_SIZE + ATOM_SIZE;
-        buffer = new StringBuilder(bufferLen);
         numToIdxSequence = new HashMap<>();
         largeNumToIdxSequence = new HashMap<>();
         numToIdxSequence.put(0, "0");
         numToIdxSequence.put(1, "1");
 
-        largeNumToIdxSequence.put(30, "30");
         largeNumToIdxSequence.put(31, "31");
+        largeNumToIdxSequence.put(32, "32");
+
+        supplier = new WordSupplier();
+
+        cacheSequence();
     }
 
-    // public long findOccurrences() {
-    //     initialize();
-    //     long occurrences = 0;
-    //     while (!searchIsComplete()) {
-    //         advanceBuffer();
-    //         if (isMatch()) {
-    //             occurrences++;
-    //         }
-    //     }
-    //     return occurrences;
-    // }
+
+    private class WordSupplier implements Supplier<String> {
+
+        private String primaryStream;
+        private int pStreamIdx;
+
+        private String secondaryStream;
+        private int sStreamIdx;
+        private boolean finished = false;
+
+        @Override
+        public String get() {
+            if (finished) {
+                return null;
+            }
+            int wordLoc;
+            if (primaryStream == null) {
+                if (N <= 30) {
+                    primaryStream = numToIdxSequence.get(N);
+                } else {
+                    secondaryStream = largeNumToIdxSequence.get(N);
+                    sStreamIdx = 0;
+                    wordLoc = Integer.parseInt(secondaryStream.substring(sStreamIdx, sStreamIdx + 2));
+                    primaryStream = numToIdxSequence.get(wordLoc - 1) + numToIdxSequence.get(wordLoc - 2);
+                    sStreamIdx += 2;
+                }
+                pStreamIdx = -1;
+            }
+
+            pStreamIdx++;
+
+            if (pStreamIdx == primaryStream.length()) {
+                if (N <= 30) {
+                    finished = true;
+                    return null;
+                } else {
+
+                    if (sStreamIdx == secondaryStream.length()) {
+                        // Done processing secondary stream too.
+                        finished = true;
+                        return null;
+                    } else {
+                        wordLoc = Integer.parseInt(secondaryStream.substring(sStreamIdx, sStreamIdx + 2));
+                        primaryStream = numToIdxSequence.get(wordLoc - 1) + numToIdxSequence.get(wordLoc - 2);
+                        sStreamIdx += 2;
+                        pStreamIdx = 0;
+                    }
+
+                }
+
+            }
+            int wordIdx = (primaryStream.charAt(pStreamIdx)) == '0' ? 0 : 1;
+            return ATOMS[wordIdx];
+        }
+
+        public boolean isFinished() {
+            return finished;
+        }
+    }
+
+    public long findOccurrences() {
+
+        long occurrences = 0;
+        while (!searchIsComplete()) {
+            advanceBuffer();
+            if (isMatch()) {
+                occurrences++;
+            }
+        }
+        return occurrences;
+    }
+
+    private boolean searchIsComplete() {
+        return supplier.isFinished();
+    }
+
+    private void advanceBuffer() {
+        if (buffer == null) {
+            initializeBuffer();
+        } else {
+            buffer.deleteCharAt(0);
+            if (buffer.length() < subString.length()) {
+                String nextWord = supplier.get();
+                if (nextWord != null) {
+                    buffer.append(nextWord);
+                }
+            }
+        }
+    }
+
+    private boolean isMatch() {
+        if (buffer.length() < subString.length()) {
+            return false;
+        } else {
+            return buffer.substring(0, subString.length()).equals(subString);
+        }
+    }
+
+    private void initializeBuffer() {
+        numWordsInBuffer = (int)java.lang.Math.ceil(subString.length() / 4.0) + 1;
+        int bufferLen = numWordsInBuffer*ATOM_SIZE;
+        buffer = new StringBuilder(bufferLen);
+        for (int i = 1; i <= numWordsInBuffer; i++) {
+            String word = supplier.get();
+            if (word == null) {
+                break;
+            }
+            buffer.append(word);
+        }
+    }
+
+    private void cacheSequence() {
+        if (N <= 30) {
+            computeSequence(N);
+        } else {
+            computeSequence(30);
+            computeLargeSequence(N);
+        }
+    }
 
     private Map<Integer, String> numToIdxSequence;
     private Map<Integer, String> largeNumToIdxSequence;
 
-    public String getSequence(int n) {
-        if (n > 30) {
-            return getLargeNumberSequence(n);
+    public String computeSequence(int n) {
+        if (n > 31) {
+            return computeLargeSequence(n);
         } else if (numToIdxSequence.containsKey(n)) {
             return numToIdxSequence.get(n);
         } else {
-            String sequence = getSequence(n - 1) + getSequence(n - 2);
+            String sequence = computeSequence(n - 1) + computeSequence(n - 2);
             numToIdxSequence.put(n, sequence);
             return sequence;
         }
     }
 
-    private String getLargeNumberSequence(int n) {
+    private String computeLargeSequence(int n) {
         if (largeNumToIdxSequence.containsKey(n)) {
             return largeNumToIdxSequence.get(n);
         } else {
-            String sequence = getLargeNumberSequence(n - 1) + getLargeNumberSequence(n - 2);
+            String sequence = computeLargeSequence(n - 1) + computeLargeSequence(n - 2);
             largeNumToIdxSequence.put(n, sequence);
             return sequence;
         }
     }
 
-    private void initialize() {
-        
+
+    // Testing method
+    public void printStream() {
+        String s;
+        while ( (s = supplier.get()) != null) {
+            System.out.print(s);
+        }
+        System.out.println();
     }
 }
