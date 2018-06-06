@@ -14,6 +14,7 @@ public class FastKlocWorkSearch {
 
     private static String[] ATOMS = {"kloc", "work"};
     private static Integer ATOM_SIZE = 4;
+    private static Integer N_PARTITION = 31;
 
     private WordSupplier supplier;
 
@@ -34,8 +35,8 @@ public class FastKlocWorkSearch {
         numToIdxSequence.put(0, "0");
         numToIdxSequence.put(1, "1");
 
-        largeNumToIdxSequence.put(30, "30");
-        largeNumToIdxSequence.put(31, "31");
+        largeNumToIdxSequence.put(N_PARTITION - 1, "" + (N_PARTITION - 1));
+        largeNumToIdxSequence.put(N_PARTITION, "" + N_PARTITION);
         cacheSequence();
     }
 
@@ -83,7 +84,7 @@ public class FastKlocWorkSearch {
     }
 
     public long findOccurrences(int n) {
-        if (n <= 31) {
+        if (n <= N_PARTITION) {
             buffer = null;
             supplier = new WordSupplier(n);
             long occurrences = 0;
@@ -161,21 +162,28 @@ public class FastKlocWorkSearch {
     }
 
     private void cacheSequence() {
-        if (N <= 31) {
+        if (N <= N_PARTITION) {
             computeSequence(N);
         } else {
-            computeSequence(31);
+            computeSequence(N_PARTITION);
 
-            counts.put("31", findOccurrences(31));
-            counts.put("30", findOccurrences(30));
+            String partStr = Integer.toString(N_PARTITION);
+            String partLessOneStr = Integer.toString(N_PARTITION - 1);
 
-            counts.put("3130", getBoundaryCounts(31, 30));
-            counts.put("3131", getBoundaryCounts(31, 31));
-            counts.put("3031", getBoundaryCounts(30, 31));
-            counts.put("3030", getBoundaryCounts(30, 30));
-
+            counts.put(partStr, findOccurrences(N_PARTITION));
+            counts.put(partLessOneStr, findOccurrences(N_PARTITION - 1));
+            storeBoundaryCounts();
             computeLargeSequence(N);
         }
+    }
+
+    private void storeBoundaryCounts() {
+        String partStr = Integer.toString(N_PARTITION);
+        String partLessOneStr = Integer.toString(N_PARTITION - 1);
+        counts.put(partStr + partStr, getBoundaryCounts(N_PARTITION, N_PARTITION));
+        counts.put(partStr + partLessOneStr, getBoundaryCounts(N_PARTITION, N_PARTITION - 1));
+        counts.put(partLessOneStr + partStr, getBoundaryCounts(N_PARTITION - 1, N_PARTITION));
+        counts.put(partLessOneStr + partLessOneStr, getBoundaryCounts(N_PARTITION - 1, N_PARTITION - 1));
     }
 
     private long getBoundaryCounts(int n1, int n2) {
@@ -202,7 +210,6 @@ public class FastKlocWorkSearch {
             s2Real += ATOMS[wordNum];
         }
 
-
         for (int i = (s1Real.length() - boundaryStringLength); i < s1Real.length(); i++) {
             char ch = s1Real.charAt(i);
             boundarySb.append(ch);
@@ -212,7 +219,12 @@ public class FastKlocWorkSearch {
             char ch = s2Real.charAt(j);
             boundarySb.append(ch);
         }
-        return occurrences(boundarySb.toString(), searchString);
+        String countKey = boundarySb.toString();
+        if (counts.containsKey(countKey)) {
+            return counts.get(countKey);
+        } else {
+            return occurrences(countKey, searchString);
+        }
     }
 
     private long occurrences(String str, String subString) {
@@ -235,23 +247,23 @@ public class FastKlocWorkSearch {
         return n;
     }
 
-    public String computeSequence(int n) {
-        if (numToIdxSequence.containsKey(n)) {
-            return numToIdxSequence.get(n);
-        } else {
-            String sequence = computeSequence(n - 1) + computeSequence(n - 2);
-            numToIdxSequence.put(n, sequence);
-            return sequence;
+    public void computeSequence(int n) {
+        for (int seqIdx = 2; seqIdx <= n; seqIdx++) {
+            String sequence = numToIdxSequence.get(seqIdx - 1) + numToIdxSequence.get(seqIdx - 2);
+            numToIdxSequence.put(seqIdx, sequence);
+            if (numToIdxSequence.containsKey(seqIdx - 3)) {
+                numToIdxSequence.remove(seqIdx - 3);
+            }
         }
     }
 
-    private String computeLargeSequence(int n) {
-        if (largeNumToIdxSequence.containsKey(n)) {
-            return largeNumToIdxSequence.get(n);
-        } else {
-            String sequence = computeLargeSequence(n - 1) + computeLargeSequence(n - 2);
-            largeNumToIdxSequence.put(n, sequence);
-            return sequence;
+    private void computeLargeSequence(int n) {
+        for (int seqIdx = (N_PARTITION + 1); seqIdx <= n; seqIdx++) {
+            String sequence = largeNumToIdxSequence.get(seqIdx - 1) + largeNumToIdxSequence.get(seqIdx - 2);
+            largeNumToIdxSequence.put(seqIdx, sequence);
+            if (largeNumToIdxSequence.containsKey(seqIdx - 3)) {
+                largeNumToIdxSequence.remove(seqIdx - 3);
+            }
         }
     }
 
