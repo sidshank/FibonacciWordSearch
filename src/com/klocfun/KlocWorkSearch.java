@@ -14,7 +14,7 @@ public class KlocWorkSearch {
 
     private static String[] ATOMS = {"kloc", "work"};
     private static Integer ATOM_SIZE = 4;
-
+    private static int PARTITION_N = 31;
     private WordSupplier supplier;
 
     public KlocWorkSearch(Integer n, String subStr) {
@@ -27,8 +27,8 @@ public class KlocWorkSearch {
         numToIdxSequence.put(0, "0");
         numToIdxSequence.put(1, "1");
 
-        largeNumToIdxSequence.put(31, "31");
-        largeNumToIdxSequence.put(32, "32");
+        largeNumToIdxSequence.put(PARTITION_N - 1, "" + (PARTITION_N - 1));
+        largeNumToIdxSequence.put(PARTITION_N, "" + PARTITION_N);
 
         supplier = new WordSupplier();
 
@@ -52,7 +52,7 @@ public class KlocWorkSearch {
             }
             int wordLoc;
             if (primaryStream == null) {
-                if (N <= 30) {
+                if (N <= PARTITION_N) {
                     primaryStream = numToIdxSequence.get(N);
                 } else {
                     secondaryStream = largeNumToIdxSequence.get(N);
@@ -67,7 +67,7 @@ public class KlocWorkSearch {
             pStreamIdx++;
 
             if (pStreamIdx == primaryStream.length()) {
-                if (N <= 30) {
+                if (N <= PARTITION_N) {
                     finished = true;
                     return null;
                 } else {
@@ -151,10 +151,10 @@ public class KlocWorkSearch {
     }
 
     private void cacheSequence() {
-        if (N <= 30) {
+        if (N <= PARTITION_N) {
             computeSequence(N);
         } else {
-            computeSequence(30);
+            computeSequence(PARTITION_N - 1);
             computeLargeSequence(N);
         }
     }
@@ -163,7 +163,7 @@ public class KlocWorkSearch {
     private Map<Integer, String> largeNumToIdxSequence;
 
     public String computeSequence(int n) {
-        if (n > 31) {
+        if (n > PARTITION_N) {
             return computeLargeSequence(n);
         } else if (numToIdxSequence.containsKey(n)) {
             return numToIdxSequence.get(n);
