@@ -1,6 +1,5 @@
 package com.klocfun;
 
-import java.util.ArrayDeque;
 import java.util.Map;
 import java.util.HashMap;
 import java.util.function.Supplier;
@@ -8,9 +7,10 @@ import java.util.function.Supplier;
 public class KlocWorkSearch {
 
     private Integer N;
-    private String subString;
+    private String searchString;
+    private int searchStringLength;
+    private char searchStringLead;
     private StringBuilder buffer;
-    private Integer numWordsInBuffer;
 
     private static String[] ATOMS = {"kloc", "work"};
     private static Integer ATOM_SIZE = 4;
@@ -19,7 +19,9 @@ public class KlocWorkSearch {
 
     public KlocWorkSearch(Integer n, String subStr) {
         N = n;
-        subString = subStr;
+        searchString = subStr;
+        searchStringLength = searchString.length();
+        searchStringLead = searchString.charAt(0);
         numToIdxSequence = new HashMap<>();
         largeNumToIdxSequence = new HashMap<>();
         numToIdxSequence.put(0, "0");
@@ -113,26 +115,30 @@ public class KlocWorkSearch {
         if (buffer == null) {
             initializeBuffer();
         } else {
-            buffer.deleteCharAt(0);
-            if (buffer.length() < subString.length()) {
-                String nextWord = supplier.get();
-                if (nextWord != null) {
-                    buffer.append(nextWord);
+            do {
+                buffer.deleteCharAt(0);
+                if (buffer.length() < searchStringLength) {
+                    String nextWord = supplier.get();
+                    if (nextWord != null) {
+                        buffer.append(nextWord);
+                    } else {
+                        break;
+                    }
                 }
-            }
+            } while (buffer.charAt(0) != searchStringLead);
         }
     }
 
     private boolean isMatch() {
-        if (buffer.length() < subString.length()) {
+        if (buffer.length() < searchStringLength) {
             return false;
         } else {
-            return buffer.substring(0, subString.length()).equals(subString);
+            return buffer.substring(0, searchStringLength).equals(searchString);
         }
     }
 
     private void initializeBuffer() {
-        numWordsInBuffer = (int)java.lang.Math.ceil(subString.length() / 4.0) + 1;
+        int numWordsInBuffer = (int)java.lang.Math.ceil(searchStringLength / 4.0) + 1;
         int bufferLen = numWordsInBuffer*ATOM_SIZE;
         buffer = new StringBuilder(bufferLen);
         for (int i = 1; i <= numWordsInBuffer; i++) {
