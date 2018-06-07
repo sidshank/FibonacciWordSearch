@@ -2,7 +2,14 @@
 
 ## About
 
-This program computes the number of occurrences of a string in a fibonacci sequence string. The fibonacci sequence string, kw(N) for a given N,is generated using the relation, kw(N) = kw(N-1) + kw(N-2), with k(0) = "kloc" and k(1) = "work".
+This program computes the number of occurrences of a string in a fibonacci sequence string.
+
+The fibonacci sequence string, kw(N) for a given N, is generated using the relation:
+
+kw(N) = kw(N-1) + kw(N-2),
+
+with, k(0) = "kloc"
+      k(1) = "work"
 
 ## System Requirements
 
