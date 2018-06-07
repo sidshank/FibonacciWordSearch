@@ -2,278 +2,318 @@ package com.klocfun;
 
 import java.util.Map;
 import java.util.HashMap;
+import java.util.function.Function;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 public class FastKlocWorkSearch {
 
-    private Integer N;
-    private String searchString;
-    private int searchStringLength;
-    private char searchStringLead;
-    private StringBuilder buffer;
+    public static final String[] WORDS = {"kloc", "work"};
+    private static final Integer WORD_SIZE = 4;
+    private static final Integer DEFAULT_PARTITION_N = 31;
+    private static final Integer MIN_PARTITION_N = 11;
+    
+    private Integer fSequenceSize;
+    private String fSearchString;
+    private int fPartitionN;
 
-    private static String[] ATOMS = {"kloc", "work"};
-    private static Integer ATOM_SIZE = 4;
-    private static Integer N_PARTITION = 31;
+    private Map<Integer, String> fSizeToSingleWordSequence;
+    private Map<Integer, String> fSizeToMultiWordSequence;
+    private Map<String, Long> fCompoundWordsToOccurrences;
 
-    private WordSupplier supplier;
+    public FastKlocWorkSearch(Integer n, String subStr, int partitionN) {
+        fPartitionN = Math.max(partitionN, MIN_PARTITION_N);
+        fSequenceSize = n;
+        fSearchString = subStr;
 
-    private Map<Integer, String> numToIdxSequence;
-    private Map<Integer, String> largeNumToIdxSequence;
-    private Map<String, Long> counts;
-
-    public FastKlocWorkSearch(Integer n, String subStr) {
-        N = n;
-        searchString = subStr;
-        searchStringLength = searchString.length();
-        searchStringLead = searchString.charAt(0);
-
-        numToIdxSequence = new HashMap<>();
-        largeNumToIdxSequence = new HashMap<>();
-        counts = new HashMap<>();
-
-        numToIdxSequence.put(0, "0");
-        numToIdxSequence.put(1, "1");
-
-        largeNumToIdxSequence.put(N_PARTITION - 1, "" + (N_PARTITION - 1));
-        largeNumToIdxSequence.put(N_PARTITION, "" + N_PARTITION);
-        cacheSequence();
+        fSizeToSingleWordSequence = new HashMap<>();
+        fSizeToSingleWordSequence.put(0, "0");
+        fSizeToSingleWordSequence.put(1, "1");
+        generateWordSequence(fSequenceSize);
     }
 
+    public FastKlocWorkSearch(Integer n, String subStr) {
+        this(n, subStr, DEFAULT_PARTITION_N);
+    }
 
-    private class WordSupplier implements Supplier<String> {
+    private static class WordSupplier implements Supplier<String> {
 
-        private String stream;
-        private int pStreamIdx;
-        private boolean finished = false;
-        private int N;
+        private String fStreamRepr;
+        private int fStreamIdx;
+        private boolean fDone = false;
 
-        public WordSupplier(int n) {
-            N = n;
+        public WordSupplier(String streamRepr) {
+            fStreamRepr = streamRepr;
+            fStreamIdx = -1;
         }
 
         @Override
         public String get() {
-            if (finished) {
+            if (fDone) {
                 return null;
             }
-            if (stream == null) {
-                stream = numToIdxSequence.get(N);
-                pStreamIdx = -1;
-            }
+            fStreamIdx++;
 
-            pStreamIdx++;
-
-            if (pStreamIdx == stream.length()) {
-                finished = true;
+            if (fStreamIdx == fStreamRepr.length()) {
+                fDone = true;
                 return null;
             } else {
-                int wordIdx = (stream.charAt(pStreamIdx)) == '0' ? 0 : 1;
-                return ATOMS[wordIdx];
+                int wordIdx = (fStreamRepr.charAt(fStreamIdx)) == '0' ? 0 : 1;
+                return WORDS[wordIdx];
             }
         }
 
         public boolean isFinished() {
-            return finished;
+            return fDone;
         }
     }
 
-    public long findOccurrences() {
+    private static class StreamingSearch {
 
-        return findOccurrences(N);
-    }
+        private long fResultCount;
+        private String fSearchString;
+        private String fWordIndexStream;
+        private char fSearchStringLead;
+        private int fSearchStringLength;
+        private WordSupplier fWordSupplier;
+        private StringBuilder fBuffer;
 
-    public long findOccurrences(int n) {
-        if (n <= N_PARTITION) {
-            buffer = null;
-            supplier = new WordSupplier(n);
-            long occurrences = 0;
+        public StreamingSearch(String wordIdxString, String subString) {
+            fResultCount = -1;
+            fWordIndexStream = wordIdxString;
+            fSearchString = subString;
+            fSearchStringLead = fSearchString.charAt(0);
+            fSearchStringLength = fSearchString.length();
+        }
+
+        public StreamingSearch search() {
+            fResultCount = 0;
+            fBuffer = null;
+            fWordSupplier = new WordSupplier(fWordIndexStream);
+
             while (!searchIsComplete()) {
                 advanceBuffer();
                 if (isMatch()) {
-                    occurrences++;
+                    fResultCount++;
                 }
             }
-            return occurrences;
+            return this;
+        }
+
+        public long getResultCount() {
+            return fResultCount;
+        }
+
+        private boolean searchIsComplete() {
+            return fWordSupplier.isFinished();
+        }
+    
+        private void advanceBuffer() {
+            if (fBuffer == null) {
+                initializeBuffer();
+            } else {
+                do {
+                    fBuffer.deleteCharAt(0);
+                    if (fBuffer.length() < fSearchStringLength) {
+                        String nextWord = fWordSupplier.get();
+                        if (nextWord != null) {
+                            fBuffer.append(nextWord);
+                        } else {
+                            break;
+                        }
+                    }
+                } while (fBuffer.charAt(0) != fSearchStringLead);
+            }
+        }
+
+        private boolean isMatch() {
+            if (fBuffer.length() < fSearchStringLength) {
+                return false;
+            } else {
+                return fBuffer.substring(0, fSearchStringLength).equals(fSearchString);
+            }
+        }
+    
+        private void initializeBuffer() {
+            int numWordsInBuffer = (int)java.lang.Math.ceil(
+                fSearchStringLength / (double) WORD_SIZE) + 1;
+            int bufferLen = numWordsInBuffer*WORD_SIZE;
+            fBuffer = new StringBuilder(bufferLen);
+            for (int i = 1; i <= numWordsInBuffer; i++) {
+                String word = fWordSupplier.get();
+                if (word == null) {
+                    break;
+                }
+                fBuffer.append(word);
+            }
+        }
+
+        public static long simpleSearch(String str, String subString) {
+
+            if (subString.length() <= 0) {
+                return (str.length() + 1);
+            }
+    
+            long n = 0;
+            long pos = 0;
+            long step = 1;
+    
+            while (true) {
+                pos = (long) str.indexOf(subString, (int)pos);
+                if (pos >= 0) {
+                    n++;
+                    pos += step;
+                } else {
+                    break;
+                }
+            }
+            return n;
+        }
+    }
+
+    public long computeOccurrences() {
+        return computeOccurrences(fSequenceSize);
+    }
+
+    private long computeOccurrences(int n) {
+
+        if (n <= fPartitionN) {
+            StreamingSearch finder = new StreamingSearch(
+                fSizeToSingleWordSequence.get(n), fSearchString);
+            return finder.search().getResultCount();
+
         } else {
-            String seq = largeNumToIdxSequence.get(n);
+            String seq = fSizeToMultiWordSequence.get(n);
             String current;
             String next;
             long occurrences = 0;
-            for (int idx = 0; idx < seq.length(); idx = idx + 2) {
+
+            // Given a sequence like 313031:
+            // The total number of occurrences of the substring in this sequence
+            // can be determined by adding:
+            // 1. The number of occurrences in N = 31
+            // 2. The number of occurrences at the boundary of strings
+            //    N = 31/30
+            // 3. The number of occurrences in N = 30
+            // 4. Num occurrences in boundary of 30/31
+            // 5. Num occurrences in 31
+
+            for (int idx = 0; idx < seq.length(); idx += 2) {
                 current = seq.substring(idx, idx + 2);
-                if (idx >= seq.length() - 4) {
+                if (idx == seq.length() - 2) {
                     next = null;
                 } else {
                     next = seq.substring(idx + 2, idx + 4);
                 }
 
-                occurrences += counts.get(current);
+                occurrences += fCompoundWordsToOccurrences.get(current);
                 if (next != null) {
-                    occurrences += counts.get(current + next);
+                    occurrences += fCompoundWordsToOccurrences.get(current + next);
                 }
             }
             return occurrences;
         }
-
     }
 
-    private boolean searchIsComplete() {
-        return supplier.isFinished();
-    }
-
-    private void advanceBuffer() {
-        if (buffer == null) {
-            initializeBuffer();
+    /**
+     * For a given n, this function generates the word sequence that
+     * is to be searched. 
+     * 1. For n < partition_n, the word sequence consists of simple / atomic
+     *    elements, like 1 and 0, corresponding to the indices of the WORDS array.
+     * 2. For n > partition_n, the word sequence becomes combinations of 
+     *    "compound words" i.e. the partition number, and it's predecessor.
+     */
+    private void generateWordSequence(int n) {
+        Map<Integer, String> sequenceMap;
+        int offset;
+        if (n <= fPartitionN) {
+            offset = 1;
+            sequenceMap = fSizeToSingleWordSequence;
         } else {
-            do {
-                buffer.deleteCharAt(0);
-                if (buffer.length() < searchStringLength) {
-                    String nextWord = supplier.get();
-                    if (nextWord != null) {
-                        buffer.append(nextWord);
-                    } else {
-                        break;
-                    }
-                }
-            } while (buffer.charAt(0) != searchStringLead);
-        }
-    }
+            generateWordSequence(fPartitionN);
 
-    private boolean isMatch() {
-        if (buffer.length() < searchStringLength) {
-            return false;
-        } else {
-            return buffer.substring(0, searchStringLength).equals(searchString);
-        }
-    }
+            fSizeToMultiWordSequence = new HashMap<>();
+            fCompoundWordsToOccurrences = new HashMap<>();
+            fSizeToMultiWordSequence.put(fPartitionN - 1, "" + (fPartitionN - 1));
+            fSizeToMultiWordSequence.put(fPartitionN, "" + fPartitionN);
 
-    private void initializeBuffer() {
-        int numWordsInBuffer = (int)java.lang.Math.ceil(searchStringLength / 4.0) + 1;
-        int bufferLen = numWordsInBuffer*ATOM_SIZE;
-        buffer = new StringBuilder(bufferLen);
-        for (int i = 1; i <= numWordsInBuffer; i++) {
-            String word = supplier.get();
-            if (word == null) {
-                break;
+            String partStr = Integer.toString(fPartitionN);
+            String partLessOneStr = Integer.toString(fPartitionN - 1);
+
+            fCompoundWordsToOccurrences.put(partStr, computeOccurrences(fPartitionN));
+            fCompoundWordsToOccurrences.put(partLessOneStr, computeOccurrences(fPartitionN - 1));
+            computeBoundaryCounts();
+
+            offset = fPartitionN;
+            sequenceMap = fSizeToMultiWordSequence;
+        }
+
+        for (int seqIdx = (offset + 1); seqIdx <= n; seqIdx++) {
+            String sequence = sequenceMap.get(seqIdx - 1) + sequenceMap.get(seqIdx - 2);
+            sequenceMap.put(seqIdx, sequence);
+
+            // At any given time, we only need the previous two map entries,
+            // So it is safe to get rid of all previous map entries.
+            if (sequenceMap.containsKey(seqIdx - 3)) {
+                sequenceMap.remove(seqIdx - 3);
             }
-            buffer.append(word);
         }
     }
 
-    private void cacheSequence() {
-        if (N <= N_PARTITION) {
-            computeSequence(N);
-        } else {
-            computeSequence(N_PARTITION);
+    private void computeBoundaryCounts() {
+        String partStr = Integer.toString(fPartitionN);
+        String partLessOneStr = Integer.toString(fPartitionN - 1);
 
-            String partStr = Integer.toString(N_PARTITION);
-            String partLessOneStr = Integer.toString(N_PARTITION - 1);
-
-            counts.put(partStr, findOccurrences(N_PARTITION));
-            counts.put(partLessOneStr, findOccurrences(N_PARTITION - 1));
-            storeBoundaryCounts();
-            computeLargeSequence(N);
-        }
-    }
-
-    private void storeBoundaryCounts() {
-        String partStr = Integer.toString(N_PARTITION);
-        String partLessOneStr = Integer.toString(N_PARTITION - 1);
-        counts.put(partStr + partStr, getBoundaryCounts(N_PARTITION, N_PARTITION));
-        counts.put(partStr + partLessOneStr, getBoundaryCounts(N_PARTITION, N_PARTITION - 1));
-        counts.put(partLessOneStr + partStr, getBoundaryCounts(N_PARTITION - 1, N_PARTITION));
-        counts.put(partLessOneStr + partLessOneStr, getBoundaryCounts(N_PARTITION - 1, N_PARTITION - 1));
+        // Best explained via an example:
+        // Let's say the partition count (partition_n) is 31. Then for N > 31, 
+        // the generated word sequences will be a combination of 30 and 31 
+        // (partition_n and partition_n - 1). Since the 4 possible combinations are
+        // 30/30, 30/31, 31/30 and 31/31, we need to find and cache away the occurrence
+        // count of the search string at the intersection of these combinations
+        // (referred to as boundary counts).
+        fCompoundWordsToOccurrences.put(partStr + partStr, getBoundaryCounts(fPartitionN, fPartitionN));
+        fCompoundWordsToOccurrences.put(partStr + partLessOneStr, getBoundaryCounts(fPartitionN, fPartitionN - 1));
+        fCompoundWordsToOccurrences.put(partLessOneStr + partStr, getBoundaryCounts(fPartitionN - 1, fPartitionN));
+        fCompoundWordsToOccurrences.put(partLessOneStr + partLessOneStr, getBoundaryCounts(fPartitionN - 1, fPartitionN - 1));
     }
 
     private long getBoundaryCounts(int n1, int n2) {
-        int boundaryStringLength = searchStringLength - 1;
-        String n1Str = numToIdxSequence.get(n1);
-        String n2Str = numToIdxSequence.get(n2);
-        String s1 = n1Str.substring(n1Str.length() - 5, n1Str.length());
-        String s2 = n2Str.substring(0, 5);
+        // When searching for a substring (size M) at the intersection point of two larger
+        // strings, the search string begins to span both strings from when (M-1) of its 
+        // characters are in the first string (n1), to when (M-1) characters are in the second
+        // string (n2). Therefore, we compute a "boundaryStringLength" value of M - 1 i.e. to
+        // find the number of occurrences of a search string at the intersection of two strings,
+        // we only need to search 2M - 2 characters distributed over the intersection.
+        int boundaryStringLength = fSearchString.length() - 1;
+        String n1Str = fSizeToSingleWordSequence.get(n1);
+        String n2Str = fSizeToSingleWordSequence.get(n2);
 
-        String s1Real = "";
-        String s2Real = "";
+        int numWordsInBoundarySpace = (int) Math.ceil((fSearchString.length() - 1) / (double) WORD_SIZE);
+        String s1 = n1Str.substring(n1Str.length() - numWordsInBoundarySpace, n1Str.length());
+        String s2 = n2Str.substring(0, numWordsInBoundarySpace);
 
         StringBuilder boundarySb = new StringBuilder();
 
-        for (int i = 0; i < s1.length(); i++) {
-            char ch = s1.charAt(i);
-            int wordNum = ch == '0'? 0 : 1;
-            s1Real += ATOMS[wordNum];
-        }
+        Function<Stream<String>, String> streamToString = (streamSeq) -> 
+            streamSeq.map(s -> Integer.parseInt(s))
+            .map(i -> WORDS[i])
+            .collect(Collectors.joining(""));
+        
 
-        for (int j = 0; j < s2.length(); j++) {
-            char ch = s2.charAt(j);
-            int wordNum = ch == '0'? 0 : 1;
-            s2Real += ATOMS[wordNum];
-        }
+        String s1Real = streamToString.apply(Stream.of(s1.split("")));
+        String s2Real = streamToString.apply(Stream.of(s2.split("")));
 
-        for (int i = (s1Real.length() - boundaryStringLength); i < s1Real.length(); i++) {
-            char ch = s1Real.charAt(i);
-            boundarySb.append(ch);
-        }
-
-        for (int j = 0; j < boundaryStringLength; j++) {
-            char ch = s2Real.charAt(j);
-            boundarySb.append(ch);
-        }
-        String countKey = boundarySb.toString();
-        if (counts.containsKey(countKey)) {
-            return counts.get(countKey);
+        String countKey = boundarySb.append(s1Real.substring(s1Real.length() - boundaryStringLength, s1Real.length()))
+                                    .append(s2Real.substring(0, boundaryStringLength))
+                                    .toString();
+        
+        if (fCompoundWordsToOccurrences.containsKey(countKey)) {
+            // Sometimes, boundary strings are identical, in that case
+            // just fetch occurrences from the map, instead of recomputing.
+            return fCompoundWordsToOccurrences.get(countKey);
         } else {
-            return occurrences(countKey, searchString);
+            return StreamingSearch.simpleSearch(countKey, fSearchString);
         }
-    }
-
-    private long occurrences(String str, String subString) {
-
-        if (subString.length() <= 0) return (str.length() + 1);
-
-        long n = 0;
-        long pos = 0;
-        long step = 1;
-
-        while (true) {
-            pos = (long) str.indexOf(subString, (int)pos);
-            if (pos >= 0) {
-                n++;
-                pos += step;
-            } else {
-                break;
-            }
-        }
-        return n;
-    }
-
-    public void computeSequence(int n) {
-        for (int seqIdx = 2; seqIdx <= n; seqIdx++) {
-            String sequence = numToIdxSequence.get(seqIdx - 1) + numToIdxSequence.get(seqIdx - 2);
-            numToIdxSequence.put(seqIdx, sequence);
-            if (numToIdxSequence.containsKey(seqIdx - 3)) {
-                numToIdxSequence.remove(seqIdx - 3);
-            }
-        }
-    }
-
-    private void computeLargeSequence(int n) {
-        for (int seqIdx = (N_PARTITION + 1); seqIdx <= n; seqIdx++) {
-            String sequence = largeNumToIdxSequence.get(seqIdx - 1) + largeNumToIdxSequence.get(seqIdx - 2);
-            largeNumToIdxSequence.put(seqIdx, sequence);
-            if (largeNumToIdxSequence.containsKey(seqIdx - 3)) {
-                largeNumToIdxSequence.remove(seqIdx - 3);
-            }
-        }
-    }
-
-
-    // Testing method
-    public void printStream() {
-        String s;
-        while ( (s = supplier.get()) != null) {
-            System.out.print(s);
-        }
-        System.out.println();
     }
 }
