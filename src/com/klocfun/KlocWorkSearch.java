@@ -1,7 +1,10 @@
 package com.klocfun;
 
 import java.util.Map;
+import java.util.Set;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.stream.Stream;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -10,27 +13,42 @@ import java.util.stream.Collectors;
 public class KlocWorkSearch {
 
     public static final String[] WORDS = {"kloc", "work"};
-    private static final Integer WORD_SIZE = 4;
+    private static final Integer WORD_SIZE = Math.max(WORDS[0].length(), WORDS[1].length());
+
     private static final Integer DEFAULT_PARTITION_N = 31;
     private static final Integer MIN_PARTITION_N = 11;
 
-    private Integer fSequenceSize;
-    private String fSearchString;
     private int fPartitionN;
+    private String fSearchString;
+    private Integer fSequenceSize;
+    private boolean fValidSearchString;
 
     private Map<Integer, String> fSizeToSingleWordSequence;
     private Map<Integer, String> fSizeToMultiWordSequence;
     private Map<String, Long> fCompoundWordsToOccurrences;
 
     public KlocWorkSearch(Integer n, String subStr, int partitionN) {
-        fPartitionN = Math.min(Math.max(partitionN, MIN_PARTITION_N), n - 2);
+        fPartitionN = Math.max(partitionN, MIN_PARTITION_N);
         fSequenceSize = n;
         fSearchString = subStr;
 
         fSizeToSingleWordSequence = new HashMap<>();
         fSizeToSingleWordSequence.put(0, "0");
         fSizeToSingleWordSequence.put(1, "1");
-        generateWordSequence(fSequenceSize);
+
+        String searchSpace = (WORDS[0] + WORDS[1]);
+
+        fValidSearchString = true;
+        for (int cIdx = 0; cIdx < fSearchString.length(); cIdx++) {
+            if (searchSpace.indexOf(fSearchString.charAt(cIdx)) == -1) {
+                fValidSearchString = false;
+                break;
+            }
+        }
+
+        if (fValidSearchString) {
+            generateWordSequence(fSequenceSize);
+        }
     }
 
     public KlocWorkSearch(Integer n, String subStr) {
@@ -196,7 +214,11 @@ public class KlocWorkSearch {
     }
 
     public long computeOccurrences() {
-        return computeOccurrences(fSequenceSize);
+        if (fValidSearchString) {
+            return computeOccurrences(fSequenceSize);
+        } else {
+            return 0;
+        }
     }
 
     /**

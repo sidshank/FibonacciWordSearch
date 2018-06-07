@@ -7,6 +7,8 @@ public class KlocWorkDriver {
         Scanner sc = new Scanner(System.in);
         double timeScalingFactor = Math.pow(10, 6);
 
+        System.out.println();
+
         try {
             while(true) {
                 System.out.print("Enter the value of N (-1 to exit): ");
