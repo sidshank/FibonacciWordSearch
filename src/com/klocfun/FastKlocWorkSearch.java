@@ -37,6 +37,12 @@ public class FastKlocWorkSearch {
         this(n, subStr, DEFAULT_PARTITION_N);
     }
 
+    // WordSupplier takes a simple stream (consisting of 1 and 0) 
+    // representation, and converts each element in the stream to
+    // one of the "atomic" words (kloc and work). This allows us
+    // to store compressed / simple streams, and expand each element
+    // in that stream into a word only when a search buffer is ready to
+    // process it.
     private static class WordSupplier implements Supplier<String> {
 
         private String fStreamRepr;
@@ -69,6 +75,10 @@ public class FastKlocWorkSearch {
         }
     }
 
+    // This class takes a simple stream of word indices (1s and 0s) and
+    // and a substring to be found in the stream. It then continuously loads
+    // words into a buffer, corresponding the word indices in the stream, to
+    // enable string comparisons to find a match.
     private static class StreamingSearch {
 
         private long fResultCount;
@@ -108,11 +118,19 @@ public class FastKlocWorkSearch {
         private boolean searchIsComplete() {
             return fWordSupplier.isFinished();
         }
-    
+        
+        /**
+         * Move the search buffer forward. 
+         */
         private void advanceBuffer() {
             if (fBuffer == null) {
                 initializeBuffer();
             } else {
+                /**
+                 * Instead of simply moving forward by 1 element, we will
+                 * move forward until we encounter a character that
+                 * matches the first element of our searchString.
+                 */
                 do {
                     fBuffer.deleteCharAt(0);
                     if (fBuffer.length() < fSearchStringLength) {
@@ -149,26 +167,30 @@ public class FastKlocWorkSearch {
             }
         }
 
-        public static long simpleSearch(String str, String subString) {
+        /**
+         * Static utility method doing a plain old string comparison match
+         * to find occurrences of the second string, in the first string.
+         */
+        public static long simpleSearch(String searchSpace, String searchString) {
 
-            if (subString.length() <= 0) {
-                return (str.length() + 1);
+            if (searchString.length() <= 0) {
+                return (searchSpace.length() + 1);
             }
     
-            long n = 0;
+            long count = 0;
             long pos = 0;
             long step = 1;
     
             while (true) {
-                pos = (long) str.indexOf(subString, (int)pos);
+                pos = (long) searchSpace.indexOf(searchString, (int)pos);
                 if (pos >= 0) {
-                    n++;
+                    count++;
                     pos += step;
                 } else {
                     break;
                 }
             }
-            return n;
+            return count;
         }
     }
 
