@@ -21,7 +21,7 @@ Download the files under the source tree into a folder.
 
 ### Compile
 
-javac -d . .\src\KlocWorkDriver.java .\src\com\klocfun\KlocWorkSearch.java
+javac -d . ./src/KlocWorkDriver.java ./src/com/klocfun/KlocWorkSearch.java
 
 ### Run
 
