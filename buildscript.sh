@@ -1,0 +1,1 @@
+javac -d . ./src/KlocWorkDriver.java ./src/com/klocfun/KlocWorkSearch.java
